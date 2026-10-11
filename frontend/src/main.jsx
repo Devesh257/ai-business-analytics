@@ -1,11 +1,30 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import {
+  StrictMode,
+} from "react";
 
-import App from "./App";
+import {
+  createRoot,
+} from "react-dom/client";
+
+import App from "./App.jsx";
+import AuthGate from "./AuthGate.jsx";
 import "./styles.css";
 
-createRoot(document.getElementById("root")).render(
+
+createRoot(
+  document.getElementById("root")
+).render(
   <StrictMode>
-    <App />
-  </StrictMode>,
+    <AuthGate>
+      {({
+        user,
+        logout,
+      }) => (
+        <App
+          currentUser={user}
+          onLogout={logout}
+        />
+      )}
+    </AuthGate>
+  </StrictMode>
 );

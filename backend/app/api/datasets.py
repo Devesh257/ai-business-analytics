@@ -6,8 +6,9 @@ import pandas as pd
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.api.dependencies import get_current_user, get_db
 from app.models.dataset import Dataset, DatasetVersion
+from app.models.user import User
 from app.services.validator import validate_dataset
 from app.security.pii_detector import analyze_pii
 from app.services.profiler import profile_dataset
@@ -60,15 +61,31 @@ def _validate_uploaded_content(file_path: Path, extension: str) -> None:
         raise ValueError("The file content does not match its extension.") from exc
 
 
-def get_db():
-    db = SessionLocal()
+def _get_owned_dataset_version(
+    db: Session,
+    dataset_version_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> DatasetVersion:
+    version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.id == dataset_version_id,
+            DatasetVersion.dataset.has(
+                Dataset.user_id == user_id
+            ),
+        )
+        .first()
+    )
 
-    try:
-        yield db
-    finally:
-        db.close()
+    if version is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset version not found.",
+        )
 
-# upload route
+    return version
+
+
 # upload route
 
 @router.post("/upload")
@@ -76,6 +93,7 @@ async def upload_dataset(
     file: UploadFile = File(...),
     dataset_id: str | None = Form(None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     filename = _safe_upload_filename(file.filename)
     extension = Path(filename).suffix.lower()
@@ -113,6 +131,7 @@ async def upload_dataset(
         if dataset_id is None:
             dataset = Dataset(
                 id=uuid.uuid4(),
+                user_id=current_user.id,
                 name=Path(filename).stem,
             )
             db.add(dataset)
@@ -129,7 +148,10 @@ async def upload_dataset(
 
             dataset = (
                 db.query(Dataset)
-                .filter(Dataset.id == dataset_uuid)
+                .filter(
+                    Dataset.id == dataset_uuid,
+                    Dataset.user_id == current_user.id,
+                )
                 .with_for_update()
                 .first()
             )
@@ -182,20 +204,13 @@ async def upload_dataset(
 def validate_dataset_version(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         validation_result = validate_dataset(
@@ -219,20 +234,13 @@ def validate_dataset_version(
 def scan_dataset_pii(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         pii_result = analyze_pii(
@@ -257,20 +265,13 @@ def scan_dataset_pii(
 def profile_dataset_version(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         pii_scan = analyze_pii(version.file_path)
@@ -293,20 +294,13 @@ def profile_dataset_version(
 def detect_dataset_semantics(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         pii_scan = analyze_pii(version.file_path)
@@ -330,20 +324,13 @@ def detect_dataset_semantics(
 def analyze_dataset_version(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         result = run_phase1_analysis(
@@ -368,20 +355,13 @@ def analyze_dataset_version(
 def create_analytics_plan(
     dataset_version_id: uuid.UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    version = (
-        db.query(DatasetVersion)
-        .filter(
-            DatasetVersion.id == dataset_version_id
-        )
-        .first()
+    version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found.",
-        )
 
     try:
         pii_scan = analyze_pii(version.file_path)

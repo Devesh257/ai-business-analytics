@@ -68,14 +68,25 @@ class FakeDB:
         pass
 
 
-def make_client(fake_db):
+def make_client(
+    fake_db,
+    current_user_id=None,
+):
     app = FastAPI()
 
     app.include_router(datasets.router)
     app.include_router(analysis_runs.router)
 
+    user = SimpleNamespace(
+        id=current_user_id or uuid4(),
+        is_active=True,
+    )
+
     def override_db():
         yield fake_db
+
+    def override_current_user():
+        return user
 
     app.dependency_overrides[
         datasets.get_db
@@ -84,6 +95,14 @@ def make_client(fake_db):
     app.dependency_overrides[
         analysis_runs.get_db
     ] = override_db
+
+    app.dependency_overrides[
+        datasets.get_current_user
+    ] = override_current_user
+
+    app.dependency_overrides[
+        analysis_runs.get_current_user
+    ] = override_current_user
 
     return TestClient(app)
 

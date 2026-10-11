@@ -8,6 +8,9 @@ from fastapi import HTTPException
 from app.api import datasets
 
 
+FAKE_CURRENT_USER = SimpleNamespace(id="test-user-id")
+
+
 class FakeQuery:
     def __init__(self, result):
         self.result = result
@@ -43,7 +46,9 @@ def test_profile_endpoint_excludes_detected_pii(tmp_path):
     )
     version = SimpleNamespace(file_path=str(file_path))
 
-    response = datasets.profile_dataset_version("unused", FakeDatabase(version))
+    response = datasets.profile_dataset_version("unused", FakeDatabase(version),
+        current_user=FAKE_CURRENT_USER,
+    )
 
     assert response["profile"]["column_names"] == ["Revenue"]
     assert "Email" not in response["profile"]["columns_profile"]
@@ -56,7 +61,9 @@ def test_semantics_endpoint_excludes_detected_pii(tmp_path):
     )
     version = SimpleNamespace(file_path=str(file_path))
 
-    response = datasets.detect_dataset_semantics("unused", FakeDatabase(version))
+    response = datasets.detect_dataset_semantics("unused", FakeDatabase(version),
+        current_user=FAKE_CURRENT_USER,
+    )
 
     assert "Email" not in response["semantics"]["columns"]
     assert response["semantics"]["columns"]["Revenue"]["role"] == "measure"
@@ -69,7 +76,9 @@ def test_plan_endpoint_excludes_detected_pii(tmp_path):
     )
     version = SimpleNamespace(file_path=str(file_path))
 
-    response = datasets.create_analytics_plan("unused", FakeDatabase(version))
+    response = datasets.create_analytics_plan("unused", FakeDatabase(version),
+        current_user=FAKE_CURRENT_USER,
+    )
 
     assert response["analytics_plan"]["measures"] == ["Revenue"]
     assert "Email" not in response["analytics_plan"]["measures"]

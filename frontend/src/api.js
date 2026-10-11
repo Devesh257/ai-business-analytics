@@ -1,22 +1,113 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL ??
+  "http://localhost:8000";
 
-async function request(path, options = {}) {
+const TOKEN_KEY =
+  "signal-ledger-access-token";
+
+
+export function getAccessToken() {
+  return sessionStorage.getItem(
+    TOKEN_KEY
+  );
+}
+
+
+export function setAccessToken(token) {
+  if (!token) {
+    sessionStorage.removeItem(
+      TOKEN_KEY
+    );
+    return;
+  }
+
+  sessionStorage.setItem(
+    TOKEN_KEY,
+    token
+  );
+}
+
+
+export function clearAccessToken() {
+  sessionStorage.removeItem(
+    TOKEN_KEY
+  );
+}
+
+
+export function isAuthenticated() {
+  return Boolean(
+    getAccessToken()
+  );
+}
+
+
+function buildHeaders(
+  options = {},
+  includeAuth = true
+) {
+  const headers = new Headers(
+    options.headers ?? {}
+  );
+
+  if (includeAuth) {
+    const token = getAccessToken();
+
+    if (token) {
+      headers.set(
+        "Authorization",
+        `Bearer ${token}`
+      );
+    }
+  }
+
+  return headers;
+}
+
+
+async function request(
+  path,
+  options = {},
+  {
+    includeAuth = true,
+  } = {}
+) {
   let response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, options);
+    response = await fetch(
+      `${API_BASE_URL}${path}`,
+      {
+        ...options,
+        headers: buildHeaders(
+          options,
+          includeAuth
+        ),
+      }
+    );
   } catch {
     throw new Error(
-      "The analytics API is unavailable. Check that the backend is running."
+      "The analytics API is unavailable. " +
+      "Check that the backend is running."
     );
   }
 
-  const payload = await response.json().catch(() => ({}));
+  const payload =
+    await response
+      .json()
+      .catch(() => ({}));
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      includeAuth
+    ) {
+      clearAccessToken();
+    }
+
     throw new Error(
-      payload.detail || "The analytics API returned an error."
+      payload.detail ||
+      "The analytics API returned an error."
     );
   }
 
@@ -24,27 +115,116 @@ async function request(path, options = {}) {
 }
 
 
-export function uploadDataset(file) {
-  const formData = new FormData();
-
-  formData.append("file", file);
-
-  return request("/datasets/upload", {
-    method: "POST",
-    body: formData,
-  });
+export async function registerUser(
+  email,
+  password
+) {
+  return request(
+    "/auth/register",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    },
+    {
+      includeAuth: false,
+    }
+  );
 }
 
 
-export function loadDatasetOverview(datasetVersionId) {
+export async function loginUser(
+  email,
+  password
+) {
+  const payload = await request(
+    "/auth/login",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    },
+    {
+      includeAuth: false,
+    }
+  );
+
+  setAccessToken(
+    payload.access_token
+  );
+
+  return payload;
+}
+
+
+export function logoutUser() {
+  clearAccessToken();
+}
+
+
+export function loadCurrentUser() {
+  return request(
+    "/auth/me"
+  );
+}
+
+
+export function uploadDataset(
+  file,
+  datasetId = null
+) {
+  const formData =
+    new FormData();
+
+  formData.append(
+    "file",
+    file
+  );
+
+  if (datasetId) {
+    formData.append(
+      "dataset_id",
+      datasetId
+    );
+  }
+
+  return request(
+    "/datasets/upload",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
+}
+
+
+export function loadDatasetOverview(
+  datasetVersionId
+) {
   return Promise.all([
     request(
       `/datasets/${datasetVersionId}/validate`,
-      { method: "POST" }
+      {
+        method: "POST",
+      }
     ),
     request(
       `/datasets/${datasetVersionId}/pii-scan`,
-      { method: "POST" }
+      {
+        method: "POST",
+      }
     ),
     request(
       `/datasets/${datasetVersionId}/profile`
@@ -53,26 +233,40 @@ export function loadDatasetOverview(datasetVersionId) {
       `/datasets/${datasetVersionId}/semantics`
     ),
   ]).then(
-    ([validation, pii, profile, semantics]) => ({
-      validation: validation.validation,
-      pii: pii.pii_scan,
-      profile: profile.profile,
-      semantics: semantics.semantics,
+    ([
+      validation,
+      pii,
+      profile,
+      semantics,
+    ]) => ({
+      validation:
+        validation.validation,
+      pii:
+        pii.pii_scan,
+      profile:
+        profile.profile,
+      semantics:
+        semantics.semantics,
     })
   );
 }
 
 
-export function loadDatasetPlan(datasetVersionId) {
+export function loadDatasetPlan(
+  datasetVersionId
+) {
   return request(
     `/datasets/${datasetVersionId}/plan`
   ).then(
-    (payload) => payload.analytics_plan
+    (payload) =>
+      payload.analytics_plan
   );
 }
 
 
-export function analyzeDataset(datasetVersionId) {
+export function analyzeDataset(
+  datasetVersionId
+) {
   return request(
     `/datasets/${datasetVersionId}/analyze`,
     {
@@ -82,32 +276,55 @@ export function analyzeDataset(datasetVersionId) {
 }
 
 
-export function loadAnalysisRun(analysisRunId) {
+export function loadAnalysisRun(
+  analysisRunId
+) {
   return request(
     `/analysis-runs/${analysisRunId}`
   );
 }
 
 
-export function loadAnalysisRuns(datasetVersionId) {
+export function loadAnalysisRuns(
+  datasetVersionId
+) {
   return request(
-    `/analysis-runs/dataset-version/${datasetVersionId}`
+    "/analysis-runs/" +
+    `dataset-version/${datasetVersionId}`
   );
 }
 
+
 export async function downloadAnalysisRunExport(
   analysisRunId,
-  format,
+  exportFormat
 ) {
+  const token =
+    getAccessToken();
+
+  if (!token) {
+    throw new Error(
+      "Sign in before exporting reports."
+    );
+  }
+
   let response;
 
   try {
     response = await fetch(
-      `${API_BASE_URL}/analysis-runs/${analysisRunId}/export/${format}`
+      `${API_BASE_URL}` +
+      `/analysis-runs/${analysisRunId}` +
+      `/export/${exportFormat}`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+        },
+      }
     );
   } catch {
     throw new Error(
-      "The analytics API is unavailable. Check that the backend is running."
+      "The analytics API is unavailable."
     );
   }
 
@@ -117,9 +334,13 @@ export async function downloadAnalysisRunExport(
         .json()
         .catch(() => ({}));
 
+    if (response.status === 401) {
+      clearAccessToken();
+    }
+
     throw new Error(
       payload.detail ||
-      "The report could not be exported."
+      "Report export failed."
     );
   }
 
@@ -128,7 +349,7 @@ export async function downloadAnalysisRunExport(
 
   const disposition =
     response.headers.get(
-      "content-disposition"
+      "Content-Disposition"
     );
 
   const filenameMatch =
@@ -138,25 +359,23 @@ export async function downloadAnalysisRunExport(
 
   const filename =
     filenameMatch?.[1] ??
-    `signal-ledger-${analysisRunId}.${format}`;
+    `signal-ledger-report.${exportFormat}`;
 
   const url =
     URL.createObjectURL(blob);
 
-  const anchor =
+  const link =
     document.createElement("a");
 
-  anchor.href = url;
-  anchor.download = filename;
+  link.href = url;
+  link.download = filename;
 
   document.body.appendChild(
-    anchor
+    link
   );
 
-  anchor.click();
-  anchor.remove();
+  link.click();
+  link.remove();
 
   URL.revokeObjectURL(url);
-
-  return filename;
 }

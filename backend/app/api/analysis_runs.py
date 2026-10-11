@@ -3,8 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+from app.api.dependencies import get_current_user, get_db
 from app.models.analysis import AnalysisRun
+from app.models.dataset import Dataset, DatasetVersion
+from app.models.user import User
 from app.services.report_exporter import (
     build_csv_export,
     build_pdf_export,
@@ -14,22 +16,21 @@ from app.services.report_exporter import (
 router = APIRouter(prefix="/analysis-runs", tags=["Analysis Runs"])
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-@router.get("/{analysis_run_id}")
-def get_analysis_run(
+def _get_owned_analysis_run(
+    db: Session,
     analysis_run_id: UUID,
-    db: Session = Depends(get_db),
-):
+    user_id: UUID,
+) -> AnalysisRun:
     analysis_run = (
         db.query(AnalysisRun)
-        .filter(AnalysisRun.id == analysis_run_id)
+        .filter(
+            AnalysisRun.id == analysis_run_id,
+            AnalysisRun.dataset_version.has(
+                DatasetVersion.dataset.has(
+                    Dataset.user_id == user_id
+                )
+            ),
+        )
         .first()
     )
 
@@ -38,6 +39,46 @@ def get_analysis_run(
             status_code=404,
             detail="Analysis run not found",
         )
+
+    return analysis_run
+
+
+def _get_owned_dataset_version(
+    db: Session,
+    dataset_version_id: UUID,
+    user_id: UUID,
+) -> DatasetVersion:
+    dataset_version = (
+        db.query(DatasetVersion)
+        .filter(
+            DatasetVersion.id == dataset_version_id,
+            DatasetVersion.dataset.has(
+                Dataset.user_id == user_id
+            ),
+        )
+        .first()
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset version not found",
+        )
+
+    return dataset_version
+
+
+@router.get("/{analysis_run_id}")
+def get_analysis_run(
+    analysis_run_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    analysis_run = _get_owned_analysis_run(
+        db,
+        analysis_run_id,
+        current_user.id,
+    )
 
     return {
         "id": str(analysis_run.id),
@@ -65,21 +106,13 @@ def export_analysis_run(
     analysis_run_id: UUID,
     export_format: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    analysis_run = (
-        db.query(AnalysisRun)
-        .filter(
-            AnalysisRun.id
-            == analysis_run_id
-        )
-        .first()
+    analysis_run = _get_owned_analysis_run(
+        db,
+        analysis_run_id,
+        current_user.id,
     )
-
-    if analysis_run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Analysis run not found",
-        )
 
     export_format = (
         export_format
@@ -209,25 +242,19 @@ def export_analysis_run(
 
 
 
-from app.models.dataset import DatasetVersion
 
 
 @router.get("/dataset-version/{dataset_version_id}")
 def get_analysis_runs_for_dataset_version(
     dataset_version_id: UUID,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    dataset_version = (
-        db.query(DatasetVersion)
-        .filter(DatasetVersion.id == dataset_version_id)
-        .first()
+    dataset_version = _get_owned_dataset_version(
+        db,
+        dataset_version_id,
+        current_user.id,
     )
-
-    if dataset_version is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset version not found",
-        )
 
     analysis_runs = (
         db.query(AnalysisRun)

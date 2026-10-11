@@ -3195,7 +3195,10 @@ function ResultsDashboard({
 }
 
 
-export default function App() {
+export default function App({
+  currentUser,
+  onLogout,
+}) {
   const fileInput =
     useRef(null);
 
@@ -3357,14 +3360,22 @@ export default function App() {
           href="#top"
         >
           Signal
-          <span>
-            Ledger
-          </span>
+          <span>Ledger</span>
         </a>
 
-        <span className="nav-note">
-          Trustworthy AI business analytics
-        </span>
+        <div className="account-nav">
+          <span className="nav-note">
+            {currentUser?.email}
+          </span>
+
+          <button
+            type="button"
+            className="logout-button"
+            onClick={onLogout}
+          >
+            Sign out
+          </button>
+        </div>
       </nav>
 
       <section
