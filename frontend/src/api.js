@@ -379,3 +379,19 @@ export async function downloadAnalysisRunExport(
 
   URL.revokeObjectURL(url);
 }
+
+
+export function listOwnedDatasets() {
+  return request(
+    "/datasets"
+  );
+}
+
+
+export function listDatasetVersions(
+  datasetId
+) {
+  return request(
+    `/datasets/${datasetId}/versions`
+  );
+}

@@ -4,7 +4,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 import pandas as pd
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import (
+    Session,
+    selectinload,
+)
 
 from app.api.dependencies import get_current_user, get_db
 from app.models.dataset import Dataset, DatasetVersion
@@ -198,6 +201,153 @@ async def upload_dataset(
         "version_number": version_number,
         "file_name": filename,
     }
+
+@router.get("")
+def list_owned_datasets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    owned_datasets = (
+        db.query(Dataset)
+        .options(
+            selectinload(
+                Dataset.versions
+            )
+        )
+        .filter(
+            Dataset.user_id
+            == current_user.id
+        )
+        .order_by(
+            Dataset.created_at.desc()
+        )
+        .all()
+    )
+
+    items = []
+
+    for dataset in owned_datasets:
+        versions = sorted(
+            dataset.versions,
+            key=lambda item: (
+                item.version_number
+            ),
+            reverse=True,
+        )
+
+        latest = (
+            versions[0]
+            if versions
+            else None
+        )
+
+        items.append(
+            {
+                "id": str(dataset.id),
+                "name": dataset.name,
+                "description": (
+                    dataset.description
+                ),
+                "created_at": (
+                    dataset.created_at
+                ),
+                "version_count": len(
+                    versions
+                ),
+                "latest_version": (
+                    {
+                        "id": str(
+                            latest.id
+                        ),
+                        "version_number": (
+                            latest
+                            .version_number
+                        ),
+                        "file_name": (
+                            latest.file_name
+                        ),
+                        "created_at": (
+                            latest.created_at
+                        ),
+                    }
+                    if latest
+                    else None
+                ),
+            }
+        )
+
+    return {
+        "count": len(items),
+        "datasets": items,
+    }
+
+
+@router.get(
+    "/{dataset_id}/versions"
+)
+def list_owned_dataset_versions(
+    dataset_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        get_current_user
+    ),
+):
+    dataset = (
+        db.query(Dataset)
+        .options(
+            selectinload(
+                Dataset.versions
+            )
+        )
+        .filter(
+            Dataset.id == dataset_id,
+            Dataset.user_id
+            == current_user.id,
+        )
+        .first()
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    versions = sorted(
+        dataset.versions,
+        key=lambda item: (
+            item.version_number
+        ),
+        reverse=True,
+    )
+
+    return {
+        "dataset_id": str(
+            dataset.id
+        ),
+        "name": dataset.name,
+        "count": len(versions),
+        "versions": [
+            {
+                "id": str(
+                    version.id
+                ),
+                "version_number": (
+                    version.version_number
+                ),
+                "file_name": (
+                    version.file_name
+                ),
+                "created_at": (
+                    version.created_at
+                ),
+            }
+            for version in versions
+        ],
+    }
+
 
 # validate route
 @router.post("/{dataset_version_id}/validate")

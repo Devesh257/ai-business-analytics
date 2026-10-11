@@ -1,14 +1,22 @@
-import { useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   analyzeDataset,
   downloadAnalysisRunExport,
   loadAnalysisRun,
   loadAnalysisRuns,
+  listOwnedDatasets,
   loadDatasetOverview,
   loadDatasetPlan,
   uploadDataset,
 } from "./api";
+
+import DatasetLibrary from "./DatasetLibrary.jsx";
 
 const supportedExtensions = ["csv", "xlsx", "xls"];
 
@@ -3237,6 +3245,120 @@ export default function App({
     setError,
   ] = useState("");
 
+  const [
+    datasetLibrary,
+    setDatasetLibrary,
+  ] = useState({
+    count: 0,
+    datasets: [],
+  });
+
+  const [
+    libraryLoading,
+    setLibraryLoading,
+  ] = useState(true);
+
+  const [
+    libraryError,
+    setLibraryError,
+  ] = useState("");
+
+
+  async function refreshDatasetLibrary() {
+    setLibraryLoading(true);
+    setLibraryError("");
+
+    try {
+      const result =
+        await listOwnedDatasets();
+
+      setDatasetLibrary(
+        result
+      );
+    } catch (nextError) {
+      setLibraryError(
+        nextError.message
+      );
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
+
+  useEffect(() => {
+    refreshDatasetLibrary();
+  }, [currentUser?.id]);
+
+
+  async function handleOpenDataset(
+    dataset
+  ) {
+    const latest =
+      dataset.latest_version;
+
+    if (!latest) {
+      return;
+    }
+
+    setError("");
+    setAnalysis(null);
+    setOverview(null);
+    setPlan(null);
+    setHistory(null);
+
+    setUpload({
+      dataset_id: dataset.id,
+      dataset_version_id:
+        latest.id,
+      version_number:
+        latest.version_number,
+      file_name:
+        latest.file_name,
+    });
+
+    setState("inspecting");
+
+    try {
+      const [
+        nextOverview,
+        nextPlan,
+        nextHistory,
+      ] = await Promise.all([
+        loadDatasetOverview(
+          latest.id
+        ),
+
+        loadDatasetPlan(
+          latest.id
+        ),
+
+        loadAnalysisRuns(
+          latest.id
+        ),
+      ]);
+
+      setOverview(
+        nextOverview
+      );
+
+      setPlan(
+        nextPlan
+      );
+
+      setHistory(
+        nextHistory
+      );
+
+      setState("ready");
+    } catch (nextError) {
+      setState("idle");
+
+      setError(
+        nextError.message
+      );
+    }
+  }
+
 
   async function handleFile(file) {
     if (!file) {
@@ -3299,6 +3421,8 @@ export default function App({
       );
 
       setState("ready");
+
+      await refreshDatasetLibrary();
     } catch (nextError) {
       setState("idle");
 
@@ -3377,6 +3501,18 @@ export default function App({
           </button>
         </div>
       </nav>
+
+      <DatasetLibrary
+        library={datasetLibrary}
+        loading={libraryLoading}
+        error={libraryError}
+        onOpenDataset={
+          handleOpenDataset
+        }
+        onRefresh={
+          refreshDatasetLibrary
+        }
+      />
 
       <section
         className="hero"
