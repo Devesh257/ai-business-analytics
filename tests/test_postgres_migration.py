@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.database import engine
 from app.models.dataset import Dataset, DatasetVersion
+from app.models.user import User
 
 
 pytestmark = pytest.mark.skipif(
@@ -19,16 +20,44 @@ pytestmark = pytest.mark.skipif(
 def test_postgres_migration_enforces_dataset_version_uniqueness():
     assert engine.dialect.name == "postgresql"
 
+    user_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
+
     connection = engine.connect()
     transaction = connection.begin()
 
     try:
         connection.execute(
+            insert(User.__table__).values(
+                id=user_id,
+                email=(
+                    "ci-migration@example.com"
+                ),
+                hashed_password=(
+                    "test-password-hash"
+                ),
+                is_active=True,
+                created_at=(
+                    datetime.now(
+                        timezone.utc
+                    )
+                ),
+            )
+        )
+
+        connection.execute(
             insert(Dataset.__table__).values(
                 id=dataset_id,
-                name="CI migration constraint test",
-                created_at=datetime.now(timezone.utc),
+                user_id=user_id,
+                name=(
+                    "CI migration "
+                    "constraint test"
+                ),
+                created_at=(
+                    datetime.now(
+                        timezone.utc
+                    )
+                ),
             )
         )
         version_values = {
