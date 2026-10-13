@@ -181,3 +181,70 @@ def test_authenticated_user_can_get_me(
     )
 
     assert "hashed_password" not in payload
+
+
+def test_expired_token_returns_expiry_message(
+    client,
+):
+    from datetime import (
+        datetime,
+        timedelta,
+        timezone,
+    )
+
+    import jwt
+
+    from app.security.tokens import (
+        ALGORITHM,
+    )
+
+    registration = register(client)
+
+    assert (
+        registration.status_code
+        == 201
+    )
+
+    user_id = registration.json()[
+        "id"
+    ]
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+    token = jwt.encode(
+        {
+            "sub": user_id,
+            "type": "access",
+            "iat": (
+                now
+                - timedelta(
+                    minutes=2
+                )
+            ),
+            "exp": (
+                now
+                - timedelta(
+                    minutes=1
+                )
+            ),
+        },
+        settings.auth_jwt_secret,
+        algorithm=ALGORITHM,
+    )
+
+    response = client.get(
+        "/auth/me",
+        headers={
+            "Authorization":
+                f"Bearer {token}"
+        },
+    )
+
+    assert response.status_code == 401
+
+    assert response.json() == {
+        "detail":
+            "Authentication session expired."
+    }

@@ -4,6 +4,7 @@ import {
 } from "react";
 
 import {
+  AUTH_SESSION_EVENT,
   getAccessToken,
   loadCurrentUser,
   loginUser,
@@ -51,11 +52,20 @@ export default function AuthGate({
         if (!cancelled) {
           setUser(currentUser);
         }
-      } catch {
+      } catch (nextError) {
         logoutUser();
 
         if (!cancelled) {
           setUser(null);
+
+          if (
+            nextError.message ===
+            "Authentication session expired."
+          ) {
+            setError(
+              "Your session expired. Please sign in again."
+            );
+          }
         }
       } finally {
         if (!cancelled) {
@@ -68,6 +78,36 @@ export default function AuthGate({
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+
+  useEffect(() => {
+    function handleSessionEnded(
+      event
+    ) {
+      logoutUser();
+
+      setUser(null);
+      setPassword("");
+      setLoading(false);
+
+      setError(
+        event.detail?.message ??
+        "Your session ended. Please sign in again."
+      );
+    }
+
+    window.addEventListener(
+      AUTH_SESSION_EVENT,
+      handleSessionEnded
+    );
+
+    return () => {
+      window.removeEventListener(
+        AUTH_SESSION_EVENT,
+        handleSessionEnded
+      );
     };
   }, []);
 

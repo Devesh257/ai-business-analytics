@@ -89,3 +89,53 @@ def test_short_secret_is_rejected(
         create_access_token(
             uuid.uuid4()
         )
+
+
+def test_expired_access_token_is_rejected(
+    monkeypatch,
+):
+    from datetime import (
+        datetime,
+        timedelta,
+        timezone,
+    )
+
+    from app.security.tokens import (
+        ExpiredAccessToken,
+    )
+
+    configure_secret(monkeypatch)
+
+    now = datetime.now(
+        timezone.utc
+    )
+
+    token = jwt.encode(
+        {
+            "sub": str(
+                uuid.uuid4()
+            ),
+            "type": "access",
+            "iat": (
+                now
+                - timedelta(
+                    minutes=2
+                )
+            ),
+            "exp": (
+                now
+                - timedelta(
+                    minutes=1
+                )
+            ),
+        },
+        settings.auth_jwt_secret,
+        algorithm=ALGORITHM,
+    )
+
+    with pytest.raises(
+        ExpiredAccessToken
+    ):
+        decode_access_token(
+            token
+        )

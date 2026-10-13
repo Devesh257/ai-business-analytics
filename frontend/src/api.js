@@ -5,6 +5,33 @@ const API_BASE_URL =
 const TOKEN_KEY =
   "signal-ledger-access-token";
 
+export const AUTH_SESSION_EVENT =
+  "signal-ledger-auth-session-ended";
+
+
+function endAuthenticatedSession(
+  detail
+) {
+  clearAccessToken();
+
+  const message =
+    detail ===
+    "Authentication session expired."
+      ? "Your session expired. Please sign in again."
+      : "Your session is no longer valid. Please sign in again.";
+
+  window.dispatchEvent(
+    new CustomEvent(
+      AUTH_SESSION_EVENT,
+      {
+        detail: {
+          message,
+        },
+      }
+    )
+  );
+}
+
 
 export function getAccessToken() {
   return sessionStorage.getItem(
@@ -102,7 +129,9 @@ async function request(
       response.status === 401 &&
       includeAuth
     ) {
-      clearAccessToken();
+      endAuthenticatedSession(
+        payload.detail
+      );
     }
 
     throw new Error(
@@ -335,7 +364,9 @@ export async function downloadAnalysisRunExport(
         .catch(() => ({}));
 
     if (response.status === 401) {
-      clearAccessToken();
+      endAuthenticatedSession(
+        payload.detail
+      );
     }
 
     throw new Error(

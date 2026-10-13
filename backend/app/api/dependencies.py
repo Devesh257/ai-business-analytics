@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.user import User
 from app.security.tokens import (
+    ExpiredAccessToken,
     InvalidAccessToken,
     decode_access_token,
 )
@@ -54,6 +55,19 @@ def get_current_user(
     try:
         user_id = decode_access_token(
             credentials.credentials
+        )
+    except ExpiredAccessToken:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_401_UNAUTHORIZED
+            ),
+            detail=(
+                "Authentication session "
+                "expired."
+            ),
+            headers={
+                "WWW-Authenticate": "Bearer"
+            },
         )
     except InvalidAccessToken:
         raise unauthorized

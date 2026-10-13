@@ -6,7 +6,10 @@ from datetime import (
 import uuid
 
 import jwt
-from jwt import InvalidTokenError
+from jwt import (
+    ExpiredSignatureError,
+    InvalidTokenError,
+)
 
 from app.core.config import settings
 
@@ -15,6 +18,12 @@ ALGORITHM = "HS256"
 
 
 class InvalidAccessToken(Exception):
+    pass
+
+
+class ExpiredAccessToken(
+    InvalidAccessToken
+):
     pass
 
 
@@ -62,6 +71,10 @@ def decode_access_token(
             _get_jwt_secret(),
             algorithms=[ALGORITHM],
         )
+    except ExpiredSignatureError as exc:
+        raise ExpiredAccessToken(
+            "Access token has expired."
+        ) from exc
     except InvalidTokenError as exc:
         raise InvalidAccessToken(
             "Invalid access token."
