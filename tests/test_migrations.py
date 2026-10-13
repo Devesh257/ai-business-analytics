@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetVersion
+from app.models.user import User
 
 
 def test_initial_migration_creates_and_enforces_dataset_version_uniqueness(tmp_path):
@@ -31,8 +32,34 @@ def test_initial_migration_creates_and_enforces_dataset_version_uniqueness(tmp_p
         "column_names": ["dataset_id", "version_number"],
     } in inspector.get_unique_constraints("dataset_versions")
 
+    dataset_columns = {
+        column["name"]: column
+        for column in inspector.get_columns(
+            "datasets"
+        )
+    }
+
+    assert (
+        dataset_columns[
+            "user_id"
+        ]["nullable"]
+        is False
+    )
+
     with Session(engine) as session:
-        dataset = Dataset(name="Migration test")
+        user = User(
+            email="migration@example.com",
+            hashed_password="test-password-hash",
+        )
+
+        session.add(user)
+        session.flush()
+
+        dataset = Dataset(
+            name="Migration test",
+            user_id=user.id,
+        )
+
         session.add(dataset)
         session.flush()
         session.add(

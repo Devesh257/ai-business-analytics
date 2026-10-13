@@ -93,18 +93,10 @@ def test_user_can_have_multiple_datasets():
         db.close()
 
 
-def test_legacy_dataset_may_temporarily_have_no_owner():
-    db = make_session()
 
-    try:
-        dataset = Dataset(
-            name="Legacy Dataset",
-        )
-
-        db.add(dataset)
-        db.commit()
-        db.refresh(dataset)
-
-        assert dataset.user_id is None
-    finally:
-        db.close()
+def test_dataset_owner_is_required():
+    assert (
+        Dataset.__table__
+        .c.user_id.nullable
+        is False
+    )

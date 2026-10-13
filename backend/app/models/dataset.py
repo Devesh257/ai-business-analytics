@@ -20,12 +20,10 @@ class Dataset(Base):
         default=uuid.uuid4,
     )
 
-    # Nullable temporarily so existing pre-authentication
-    # datasets can survive the ownership migration.
-    # New uploads will always receive an authenticated owner.
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
+    # Every dataset must belong to an authenticated user.
+    user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
 
@@ -42,7 +40,7 @@ class Dataset(Base):
         nullable=False,
     )
 
-    user: Mapped["User | None"] = relationship(
+    user: Mapped["User"] = relationship(
         "User",
         back_populates="datasets",
     )
