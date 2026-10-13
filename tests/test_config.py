@@ -117,3 +117,35 @@ def test_invalid_log_level_is_rejected():
         make_settings(
             log_level="verbose"
         )
+
+
+def test_login_rate_limit_defaults():
+    settings = make_settings()
+
+    assert (
+        settings.auth_login_max_attempts
+        == 5
+    )
+
+    assert (
+        settings.auth_login_window_seconds
+        == 300
+    )
+
+
+def test_login_max_attempts_too_low_is_rejected():
+    with pytest.raises(
+        ValidationError
+    ):
+        make_settings(
+            auth_login_max_attempts=1
+        )
+
+
+def test_login_window_too_short_is_rejected():
+    with pytest.raises(
+        ValidationError
+    ):
+        make_settings(
+            auth_login_window_seconds=10
+        )

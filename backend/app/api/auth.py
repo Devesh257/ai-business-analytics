@@ -11,12 +11,16 @@ from app.api.dependencies import (
     get_current_user,
     get_db,
 )
+from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
     TokenResponse,
     UserResponse,
+)
+from app.security.login_rate_limiter import (
+    login_rate_limiter,
 )
 from app.security.passwords import (
     hash_password,
@@ -106,6 +110,36 @@ def login_user(
         str(payload.email)
     )
 
+    retry_after = (
+        login_rate_limiter.retry_after(
+            email,
+            max_attempts=(
+                settings
+                .auth_login_max_attempts
+            ),
+            window_seconds=(
+                settings
+                .auth_login_window_seconds
+            ),
+        )
+    )
+
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=(
+                status
+                .HTTP_429_TOO_MANY_REQUESTS
+            ),
+            detail=(
+                "Too many login attempts. "
+                "Try again later."
+            ),
+            headers={
+                "Retry-After":
+                    str(retry_after)
+            },
+        )
+
     user = (
         db.query(User)
         .filter(User.email == email)
@@ -119,6 +153,14 @@ def login_user(
             user.hashed_password,
         )
     ):
+        login_rate_limiter.record_failure(
+            email,
+            window_seconds=(
+                settings
+                .auth_login_window_seconds
+            ),
+        )
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
@@ -126,6 +168,10 @@ def login_user(
                 "WWW-Authenticate": "Bearer"
             },
         )
+
+    login_rate_limiter.reset(
+        email
+    )
 
     if not user.is_active:
         raise HTTPException(

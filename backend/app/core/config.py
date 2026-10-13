@@ -45,6 +45,18 @@ class Settings(BaseSettings):
         le=1440,
     )
 
+    auth_login_max_attempts: int = Field(
+        default=5,
+        ge=2,
+        le=20,
+    )
+
+    auth_login_window_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=3600,
+    )
+
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
         env_file_encoding="utf-8",

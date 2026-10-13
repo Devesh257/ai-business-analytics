@@ -9,6 +9,9 @@ from app.api.auth import router
 from app.api.dependencies import get_db
 from app.core.config import settings
 from app.models.user import User
+from app.security.login_rate_limiter import (
+    login_rate_limiter,
+)
 
 
 @pytest.fixture
@@ -49,6 +52,20 @@ def client(monkeypatch):
         30,
     )
 
+    monkeypatch.setattr(
+        settings,
+        "auth_login_max_attempts",
+        3,
+    )
+
+    monkeypatch.setattr(
+        settings,
+        "auth_login_window_seconds",
+        60,
+    )
+
+    login_rate_limiter.reset_all()
+
     app = FastAPI()
     app.include_router(router)
 
@@ -58,6 +75,8 @@ def client(monkeypatch):
 
     with TestClient(app) as test_client:
         yield test_client
+
+    login_rate_limiter.reset_all()
 
 
 def register(client):
@@ -248,3 +267,197 @@ def test_expired_token_returns_expiry_message(
         "detail":
             "Authentication session expired."
     }
+
+
+def test_repeated_login_failures_are_rate_limited(
+    client,
+):
+    register(client)
+
+    for _ in range(
+        settings.auth_login_max_attempts
+    ):
+        response = client.post(
+            "/auth/login",
+            json={
+                "email":
+                    "user@example.com",
+                "password":
+                    "Wrong-Password",
+            },
+        )
+
+        assert (
+            response.status_code
+            == 401
+        )
+
+        assert response.json() == {
+            "detail":
+                "Invalid email or password."
+        }
+
+    blocked = client.post(
+        "/auth/login",
+        json={
+            "email":
+                "user@example.com",
+            "password":
+                "Strong-Password-123!",
+        },
+    )
+
+    assert blocked.status_code == 429
+
+    assert blocked.json() == {
+        "detail": (
+            "Too many login attempts. "
+            "Try again later."
+        )
+    }
+
+    retry_after = int(
+        blocked.headers[
+            "Retry-After"
+        ]
+    )
+
+    assert 1 <= retry_after <= (
+        settings
+        .auth_login_window_seconds
+    )
+
+
+def test_successful_login_resets_failure_count(
+    client,
+):
+    register(client)
+
+    for _ in range(2):
+        response = client.post(
+            "/auth/login",
+            json={
+                "email":
+                    "user@example.com",
+                "password":
+                    "Wrong-Password",
+            },
+        )
+
+        assert (
+            response.status_code
+            == 401
+        )
+
+    success = client.post(
+        "/auth/login",
+        json={
+            "email":
+                "user@example.com",
+            "password":
+                "Strong-Password-123!",
+        },
+    )
+
+    assert success.status_code == 200
+
+    for _ in range(3):
+        response = client.post(
+            "/auth/login",
+            json={
+                "email":
+                    "user@example.com",
+                "password":
+                    "Wrong-Password",
+            },
+        )
+
+        assert (
+            response.status_code
+            == 401
+        )
+
+    blocked = client.post(
+        "/auth/login",
+        json={
+            "email":
+                "user@example.com",
+            "password":
+                "Strong-Password-123!",
+        },
+    )
+
+    assert blocked.status_code == 429
+
+
+def test_unknown_email_is_also_rate_limited(
+    client,
+):
+    for _ in range(
+        settings.auth_login_max_attempts
+    ):
+        response = client.post(
+            "/auth/login",
+            json={
+                "email":
+                    "missing@example.com",
+                "password":
+                    "Wrong-Password",
+            },
+        )
+
+        assert (
+            response.status_code
+            == 401
+        )
+
+    blocked = client.post(
+        "/auth/login",
+        json={
+            "email":
+                "missing@example.com",
+            "password":
+                "Wrong-Password",
+        },
+    )
+
+    assert blocked.status_code == 429
+
+
+def test_rate_limit_uses_normalized_email(
+    client,
+):
+    register(client)
+
+    emails = [
+        "USER@example.com",
+        "User@Example.com",
+        "user@example.com",
+    ]
+
+    for email in emails:
+        response = client.post(
+            "/auth/login",
+            json={
+                "email": email,
+                "password":
+                    "Wrong-Password",
+            },
+        )
+
+        assert (
+            response.status_code
+            == 401
+        )
+
+    blocked = client.post(
+        "/auth/login",
+        json={
+            "email":
+                "USER@EXAMPLE.COM",
+            "password":
+                "Strong-Password-123!",
+        },
+    )
+
+    assert blocked.status_code == 429
