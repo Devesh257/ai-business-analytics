@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     llm_provider: Literal[
         "gemini",
         "azure_openai",
+        "ollama",
         "mock",
     ] = "mock"
 
@@ -31,6 +32,14 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
     azure_openai_api_version: str = ""
+
+    ollama_base_url: str = ""
+    ollama_model: str = ""
+    ollama_request_timeout_seconds: int = Field(
+        default=60,
+        ge=5,
+        le=300,
+    )
 
     cors_allow_origins: str = (
         "http://localhost:5173"
@@ -140,10 +149,15 @@ class Settings(BaseSettings):
         if self.llm_auto_explanation_limit == 0:
             return self
 
-        if not self.llm_model.strip():
+        if (
+            self.llm_provider
+            in {"gemini", "azure_openai"}
+            and not self.llm_model.strip()
+        ):
             raise ValueError(
                 "LLM_MODEL is required when "
-                "automatic LLM explanations "
+                "Gemini or Azure OpenAI "
+                "automatic explanations "
                 "are enabled."
             )
 
@@ -176,6 +190,26 @@ class Settings(BaseSettings):
             if missing:
                 raise ValueError(
                     "Missing Azure OpenAI "
+                    "configuration: "
+                    + ", ".join(missing)
+                )
+
+        elif self.llm_provider == "ollama":
+            missing = []
+
+            if not self.ollama_base_url.strip():
+                missing.append(
+                    "OLLAMA_BASE_URL"
+                )
+
+            if not self.ollama_model.strip():
+                missing.append(
+                    "OLLAMA_MODEL"
+                )
+
+            if missing:
+                raise ValueError(
+                    "Missing Ollama "
                     "configuration: "
                     + ", ".join(missing)
                 )

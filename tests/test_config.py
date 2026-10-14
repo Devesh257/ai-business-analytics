@@ -149,3 +149,76 @@ def test_login_window_too_short_is_rejected():
         make_settings(
             auth_login_window_seconds=10
         )
+
+
+def test_ollama_configuration_is_supported():
+    settings = make_settings(
+        llm_provider="ollama",
+        llm_auto_explanation_limit=1,
+        ollama_base_url=(
+            "http://192.168.1.7:11434"
+        ),
+        ollama_model="llama3.2:3b",
+    )
+
+    assert (
+        settings.llm_provider
+        == "ollama"
+    )
+    assert (
+        settings.ollama_base_url
+        == "http://192.168.1.7:11434"
+    )
+    assert (
+        settings.ollama_model
+        == "llama3.2:3b"
+    )
+
+
+def test_ollama_requires_base_url_when_enabled():
+    with pytest.raises(
+        ValidationError
+    ):
+        make_settings(
+            llm_provider="ollama",
+            llm_auto_explanation_limit=1,
+            ollama_base_url="",
+            ollama_model="llama3.2:3b",
+        )
+
+
+def test_ollama_requires_model_when_enabled():
+    with pytest.raises(
+        ValidationError
+    ):
+        make_settings(
+            llm_provider="ollama",
+            llm_auto_explanation_limit=1,
+            ollama_base_url=(
+                "http://192.168.1.7:11434"
+            ),
+            ollama_model="",
+        )
+
+
+def test_ollama_does_not_require_gemini_key():
+    settings = make_settings(
+        llm_provider="ollama",
+        llm_auto_explanation_limit=1,
+        gemini_api_key="",
+        ollama_base_url=(
+            "http://192.168.1.7:11434"
+        ),
+        ollama_model="llama3.2:3b",
+    )
+
+    assert settings.gemini_api_key == ""
+
+
+def test_invalid_ollama_timeout_is_rejected():
+    with pytest.raises(
+        ValidationError
+    ):
+        make_settings(
+            ollama_request_timeout_seconds=1
+        )

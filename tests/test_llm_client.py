@@ -6,6 +6,7 @@ import pytest
 from app.services.llm_client import (
     AzureOpenAIExplanationProvider,
     GeminiExplanationProvider,
+    OllamaExplanationProvider,
     LLMConfigurationError,
     generate_explanation,
     get_configured_provider,
@@ -341,7 +342,287 @@ def test_get_configured_provider_rejects_unknown_provider(
         LLMConfigurationError,
         match=(
             "LLM_PROVIDER must be set to "
-            "'azure_openai' or 'gemini'"
+            "'azure_openai', 'gemini', "
+            "or 'ollama'"
         ),
+    ):
+        get_configured_provider()
+
+def test_get_configured_provider_returns_ollama_provider(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "ollama",
+    )
+
+    monkeypatch.delenv(
+        "LLM_MODEL",
+        raising=False,
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_BASE_URL",
+        "http://192.168.1.7:11434",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_MODEL",
+        "llama3.2:3b",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_REQUEST_TIMEOUT_SECONDS",
+        "60",
+    )
+
+    provider = get_configured_provider()
+
+    assert isinstance(
+        provider,
+        OllamaExplanationProvider,
+    )
+
+    assert (
+        provider.base_url
+        == "http://192.168.1.7:11434"
+    )
+
+    assert (
+        provider.model
+        == "llama3.2:3b"
+    )
+
+    assert (
+        provider.timeout_seconds
+        == 60
+    )
+
+
+def test_get_configured_provider_requires_ollama_base_url(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "ollama",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_MODEL",
+        "llama3.2:3b",
+    )
+
+    monkeypatch.delenv(
+        "OLLAMA_BASE_URL",
+        raising=False,
+    )
+
+    with pytest.raises(
+        LLMConfigurationError,
+        match="OLLAMA_BASE_URL is required",
+    ):
+        get_configured_provider()
+
+
+def test_get_configured_provider_requires_ollama_model(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "ollama",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_BASE_URL",
+        "http://192.168.1.7:11434",
+    )
+
+    monkeypatch.delenv(
+        "OLLAMA_MODEL",
+        raising=False,
+    )
+
+    with pytest.raises(
+        LLMConfigurationError,
+        match="OLLAMA_MODEL is required",
+    ):
+        get_configured_provider()
+
+
+def test_ollama_provider_generates_expected_response():
+    calls = []
+
+    def fake_request(
+        url,
+        payload,
+        timeout_seconds,
+    ):
+        calls.append(
+            {
+                "url": url,
+                "payload": payload,
+                "timeout_seconds":
+                    timeout_seconds,
+            }
+        )
+
+        return {
+            "message": {
+                "role": "assistant",
+                "content":
+                    "Verified explanation",
+            }
+        }
+
+    provider = OllamaExplanationProvider(
+        base_url=(
+            "http://192.168.1.7:11434"
+        ),
+        model="llama3.2:3b",
+        timeout_seconds=60,
+        request_func=fake_request,
+    )
+
+    prompt = {
+        "instruction": (
+            "Explain clearly and preserve "
+            "verified numbers."
+        ),
+        "verified_evidence": {
+            "insight_type": "correlation",
+            "title": "Age and Salary",
+            "source_columns": [
+                "Age",
+                "Salary",
+            ],
+            "method":
+                "pearson_correlation",
+            "evidence": {
+                "correlation": 0.9,
+                "sample_size": 10,
+            },
+            "verification": {
+                "status": "verified",
+            },
+            "limitations": [],
+        },
+    }
+
+    result = provider.generate(
+        prompt
+    )
+
+    assert result == {
+        "text": "Verified explanation",
+    }
+
+    assert len(calls) == 1
+
+    call = calls[0]
+
+    assert (
+        call["url"]
+        == (
+            "http://192.168.1.7:11434"
+            "/api/chat"
+        )
+    )
+
+    assert (
+        call["timeout_seconds"]
+        == 60
+    )
+
+    payload = call["payload"]
+
+    assert (
+        payload["model"]
+        == "llama3.2:3b"
+    )
+
+    assert payload["stream"] is False
+
+    assert (
+        payload["options"][
+            "temperature"
+        ]
+        == 0.1
+    )
+
+    assert (
+        payload["messages"][0]["role"]
+        == "system"
+    )
+
+    assert (
+        "Do not invent or alter numbers"
+        in payload["messages"][0]["content"]
+    )
+
+    assert (
+        '"correlation": 0.9'
+        in payload["messages"][1]["content"]
+    )
+
+
+def test_ollama_provider_rejects_invalid_response():
+    def fake_request(
+        url,
+        payload,
+        timeout_seconds,
+    ):
+        return {
+            "unexpected": True
+        }
+
+    provider = OllamaExplanationProvider(
+        base_url=(
+            "http://192.168.1.7:11434"
+        ),
+        model="llama3.2:3b",
+        request_func=fake_request,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "unexpected response "
+            "structure"
+        ),
+    ):
+        provider.generate(
+            {
+                "instruction": "Explain.",
+                "verified_evidence": {},
+            }
+        )
+
+
+def test_invalid_ollama_timeout_is_rejected_by_provider_config(
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "LLM_PROVIDER",
+        "ollama",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_BASE_URL",
+        "http://192.168.1.7:11434",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_MODEL",
+        "llama3.2:3b",
+    )
+
+    monkeypatch.setenv(
+        "OLLAMA_REQUEST_TIMEOUT_SECONDS",
+        "1",
+    )
+
+    with pytest.raises(
+        LLMConfigurationError,
+        match="must be between 5 and 300",
     ):
         get_configured_provider()
