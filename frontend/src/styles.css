@@ -2478,3 +2478,139 @@ button {
     width: 100%;
   }
 }
+
+
+/* Dataset version workspace */
+
+.dataset-library-item {
+  display: block;
+}
+
+.dataset-library-item-active {
+  border-color: currentColor;
+}
+
+.dataset-library-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 18px;
+}
+
+.dataset-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dataset-title-row h3 {
+  margin: 0;
+}
+
+.dataset-library-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dataset-library-actions .secondary-button {
+  opacity: 0.82;
+}
+
+.dataset-version-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid
+    rgba(128, 128, 128, 0.24);
+}
+
+.dataset-version-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid
+    rgba(128, 128, 128, 0.2);
+  border-radius: 12px;
+  background:
+    rgba(128, 128, 128, 0.04);
+}
+
+.dataset-version-row-active {
+  border-color: currentColor;
+  background:
+    rgba(128, 128, 128, 0.08);
+}
+
+.version-details {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.version-details > span {
+  overflow-wrap: anywhere;
+}
+
+.version-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid
+    rgba(128, 128, 128, 0.3);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.version-badge.latest {
+  opacity: 0.78;
+}
+
+.version-badge.active {
+  border-color: currentColor;
+}
+
+.version-empty {
+  margin: 0;
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .dataset-library-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dataset-library-actions {
+    justify-content: stretch;
+  }
+
+  .dataset-library-actions button {
+    flex: 1 1 140px;
+  }
+
+  .dataset-version-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dataset-version-row button {
+    width: 100%;
+  }
+}

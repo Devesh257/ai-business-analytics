@@ -11,6 +11,7 @@ import {
   loadAnalysisRun,
   loadAnalysisRuns,
   listOwnedDatasets,
+  listDatasetVersions,
   loadDatasetOverview,
   loadDatasetPlan,
   uploadDataset,
@@ -3290,13 +3291,11 @@ export default function App({
   }, [currentUser?.id]);
 
 
-  async function handleOpenDataset(
-    dataset
+  async function openDatasetVersion(
+    dataset,
+    version
   ) {
-    const latest =
-      dataset.latest_version;
-
-    if (!latest) {
+    if (!version) {
       return;
     }
 
@@ -3309,11 +3308,11 @@ export default function App({
     setUpload({
       dataset_id: dataset.id,
       dataset_version_id:
-        latest.id,
+        version.id,
       version_number:
-        latest.version_number,
+        version.version_number,
       file_name:
-        latest.file_name,
+        version.file_name,
     });
 
     setState("inspecting");
@@ -3325,15 +3324,15 @@ export default function App({
         nextHistory,
       ] = await Promise.all([
         loadDatasetOverview(
-          latest.id
+          version.id
         ),
 
         loadDatasetPlan(
-          latest.id
+          version.id
         ),
 
         loadAnalysisRuns(
-          latest.id
+          version.id
         ),
       ]);
 
@@ -3357,6 +3356,16 @@ export default function App({
         nextError.message
       );
     }
+  }
+
+
+  async function handleOpenDataset(
+    dataset
+  ) {
+    return openDatasetVersion(
+      dataset,
+      dataset.latest_version
+    );
   }
 
 
@@ -3508,6 +3517,19 @@ export default function App({
         error={libraryError}
         onOpenDataset={
           handleOpenDataset
+        }
+        onOpenVersion={
+          openDatasetVersion
+        }
+        onLoadVersions={
+          listDatasetVersions
+        }
+        activeDatasetId={
+          upload?.dataset_id ?? null
+        }
+        activeVersionId={
+          upload?.dataset_version_id
+          ?? null
         }
         onRefresh={
           refreshDatasetLibrary
