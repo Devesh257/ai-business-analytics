@@ -136,9 +136,15 @@ def group_comparison(df, measure, dimension):
     for group in groups:
         group_name = group[dimension]
 
+        group_filter = (
+            pl.col(dimension).is_null()
+            if group_name is None
+            else pl.col(dimension) == group_name
+        )
+
         values = (
             df
-            .filter(pl.col(dimension) == group_name)
+            .filter(group_filter)
             .select(measure)
             .drop_nulls()
             .to_series()
