@@ -4,6 +4,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.auth import router as auth_router
 from app.api.analysis_runs import (
@@ -14,6 +17,7 @@ from app.api.datasets import (
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.db.database import engine
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +66,96 @@ app.include_router(analysis_runs_router)
 
 @app.get("/health")
 def health_check():
+    """Cheap process liveness check."""
+
     return {
         "status": "ok",
         "service": "backend",
     }
+
+
+def _database_is_ready():
+    """Check database reachability with no application data access."""
+
+    try:
+        with engine.connect() as connection:
+            connection.execute(
+                text("SELECT 1")
+            )
+    except SQLAlchemyError:
+        logger.warning(
+            "Database readiness check failed",
+            extra={
+                "event":
+                    "database_readiness_failed",
+            },
+        )
+        return False
+
+    return True
+
+
+def _llm_readiness():
+    """
+    Report configuration state only.
+
+    Readiness deliberately does not call an
+    external LLM provider.
+    """
+
+    enabled = (
+        settings.llm_auto_explanation_limit
+        > 0
+    )
+
+    return {
+        "provider":
+            settings.llm_provider,
+        "automatic_explanations_enabled":
+            enabled,
+        "configuration":
+            (
+                "valid"
+                if enabled
+                else "not_required"
+            ),
+        "connectivity_checked":
+            False,
+    }
+
+
+@app.get("/ready")
+def readiness_check():
+    """
+    Application readiness check.
+
+    Database connectivity is required.
+    External LLM connectivity is intentionally
+    not probed here.
+    """
+
+    database_ready = (
+        _database_is_ready()
+    )
+
+    payload = {
+        "status": (
+            "ready"
+            if database_ready
+            else "not_ready"
+        ),
+        "database": (
+            "ready"
+            if database_ready
+            else "unavailable"
+        ),
+        "llm": _llm_readiness(),
+    }
+
+    if not database_ready:
+        return JSONResponse(
+            status_code=503,
+            content=payload,
+        )
+
+    return payload
