@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,6 +12,12 @@ BASE_DIR = Path(__file__).resolve().parents[3]
 
 class Settings(BaseSettings):
     database_url: str
+
+    app_environment: Literal[
+        "development",
+        "test",
+        "production",
+    ] = "development"
 
     llm_provider: Literal[
         "gemini",
@@ -140,12 +147,57 @@ class Settings(BaseSettings):
                 "at least one origin."
             )
 
+        for origin in origins:
+            if "*" in origin:
+                raise ValueError(
+                    "CORS_ALLOW_ORIGINS must list "
+                    "explicit origins; wildcards are not allowed."
+                )
+
+            try:
+                parsed = urlsplit(origin)
+                port = parsed.port
+            except ValueError as exc:
+                raise ValueError(
+                    "CORS_ALLOW_ORIGINS contains an invalid origin."
+                ) from exc
+
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.username
+                or parsed.password
+                or parsed.path
+                or parsed.query
+                or parsed.fragment
+                or port is None and ":" in parsed.netloc
+            ):
+                raise ValueError(
+                    "CORS_ALLOW_ORIGINS entries must be complete "
+                    "http or https origins without paths or credentials."
+                )
+
         return value
 
     @model_validator(mode="after")
     def validate_llm_configuration(self):
         # LLM completely disabled for automatic
         # explanations. Credentials are not required.
+        if self.app_environment == "production":
+            if len(self.auth_jwt_secret.strip()) < 32:
+                raise ValueError(
+                    "AUTH_JWT_SECRET must contain at least 32 "
+                    "characters in production."
+                )
+
+            if any(
+                not origin.startswith("https://")
+                for origin in self.cors_origins
+            ):
+                raise ValueError(
+                    "CORS_ALLOW_ORIGINS must use HTTPS in production."
+                )
+
         if self.llm_auto_explanation_limit == 0:
             return self
 

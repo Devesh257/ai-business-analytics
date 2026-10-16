@@ -92,6 +92,49 @@ def test_cors_origins_are_parsed():
     ]
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "*",
+        "https://*.example.com",
+        "https://example.com/api",
+        "ftp://example.com",
+        "https://user@example.com",
+    ],
+)
+def test_cors_rejects_non_origin_values(origin):
+    with pytest.raises(ValidationError):
+        make_settings(cors_allow_origins=origin)
+
+
+def test_production_requires_https_cors_origins():
+    with pytest.raises(ValidationError):
+        make_settings(
+            app_environment="production",
+            auth_jwt_secret="a" * 32,
+            cors_allow_origins="http://localhost:5173",
+        )
+
+
+def test_production_requires_strong_jwt_secret():
+    with pytest.raises(ValidationError):
+        make_settings(
+            app_environment="production",
+            auth_jwt_secret="too-short",
+            cors_allow_origins="https://app.example.com",
+        )
+
+
+def test_valid_production_configuration():
+    settings = make_settings(
+        app_environment="production",
+        auth_jwt_secret="a" * 32,
+        cors_allow_origins="https://app.example.com",
+    )
+
+    assert settings.app_environment == "production"
+
+
 def test_azure_requires_credentials_when_enabled():
     with pytest.raises(ValidationError):
         make_settings(

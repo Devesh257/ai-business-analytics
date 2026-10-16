@@ -42,6 +42,34 @@ def test_health_does_not_require_database(
     assert response.status_code == 200
 
 
+def test_cors_allows_only_configured_origin_without_credentials():
+    origin = main_module.settings.cors_origins[0]
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert "access-control-allow-credentials" not in response.headers
+
+
+def test_cors_does_not_allow_unconfigured_origin():
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "https://untrusted.example.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_ready_when_database_available(
     monkeypatch,
 ):
