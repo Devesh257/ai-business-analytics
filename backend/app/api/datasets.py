@@ -18,13 +18,21 @@ from app.services.profiler import profile_dataset
 from app.services.semantic_detector import infer_semantics
 from app.services.analysis_pipeline import run_phase1_analysis
 from app.services.analytics_planner import build_analytics_plan
+from app.core.config import settings
+from app.services.dataset_storage import build_dataset_storage
 
 
 router = APIRouter(prefix="/datasets", tags=["Datasets"])
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
-UPLOAD_DIR = BACKEND_DIR / "storage" / "uploads"
+STORAGE_ROOT = settings.storage_local_root_path
+UPLOAD_DIR = STORAGE_ROOT / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+DATASET_STORAGE = build_dataset_storage(
+    settings
+)
+
 MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
@@ -173,12 +181,19 @@ async def upload_dataset(
             )
             version_number = latest_version.version_number + 1 if latest_version else 1
 
+        file_reference = (
+            DATASET_STORAGE
+            .reference_for_path(
+                file_path
+            )
+        )
+
         version = DatasetVersion(
             id=file_id,
             dataset_id=dataset.id,
             version_number=version_number,
             file_name=filename,
-            file_path=str(file_path),
+            file_path=file_reference,
         )
         db.add(version)
         db.commit()
@@ -363,9 +378,12 @@ def validate_dataset_version(
     )
 
     try:
-        validation_result = validate_dataset(
+        with DATASET_STORAGE.materialize(
             version.file_path
-        )
+        ) as dataset_path:
+            validation_result = validate_dataset(
+                str(dataset_path)
+            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -393,9 +411,12 @@ def scan_dataset_pii(
     )
 
     try:
-        pii_result = analyze_pii(
+        with DATASET_STORAGE.materialize(
             version.file_path
-        )
+        ) as dataset_path:
+            pii_result = analyze_pii(
+                str(dataset_path)
+            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -424,8 +445,19 @@ def profile_dataset_version(
     )
 
     try:
-        pii_scan = analyze_pii(version.file_path)
-        profile = profile_dataset(version.file_path, pii_scan["protected_columns"])
+        with DATASET_STORAGE.materialize(
+            version.file_path
+        ) as dataset_path:
+            local_path = str(dataset_path)
+
+            pii_scan = analyze_pii(
+                local_path
+            )
+
+            profile = profile_dataset(
+                local_path,
+                pii_scan["protected_columns"],
+            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -453,8 +485,19 @@ def detect_dataset_semantics(
     )
 
     try:
-        pii_scan = analyze_pii(version.file_path)
-        semantics = infer_semantics(version.file_path, pii_scan["protected_columns"])
+        with DATASET_STORAGE.materialize(
+            version.file_path
+        ) as dataset_path:
+            local_path = str(dataset_path)
+
+            pii_scan = analyze_pii(
+                local_path
+            )
+
+            semantics = infer_semantics(
+                local_path,
+                pii_scan["protected_columns"],
+            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -483,11 +526,18 @@ def analyze_dataset_version(
     )
 
     try:
-        result = run_phase1_analysis(
-            version.file_path,
-            dataset_id=str(version.dataset_id),
-            dataset_version_id=str(version.id),
-        )
+        with DATASET_STORAGE.materialize(
+            version.file_path
+        ) as dataset_path:
+            result = run_phase1_analysis(
+                str(dataset_path),
+                dataset_id=str(
+                    version.dataset_id
+                ),
+                dataset_version_id=str(
+                    version.id
+                ),
+            )
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -514,10 +564,24 @@ def create_analytics_plan(
     )
 
     try:
-        pii_scan = analyze_pii(version.file_path)
-        profile = profile_dataset(version.file_path, pii_scan["protected_columns"])
+        with DATASET_STORAGE.materialize(
+            version.file_path
+        ) as dataset_path:
+            local_path = str(dataset_path)
 
-        semantics = infer_semantics(version.file_path, pii_scan["protected_columns"])
+            pii_scan = analyze_pii(
+                local_path
+            )
+
+            profile = profile_dataset(
+                local_path,
+                pii_scan["protected_columns"],
+            )
+
+            semantics = infer_semantics(
+                local_path,
+                pii_scan["protected_columns"],
+            )
 
         plan = build_analytics_plan(
             profile,

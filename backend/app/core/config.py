@@ -52,6 +52,18 @@ class Settings(BaseSettings):
         "http://localhost:5173"
     )
 
+    storage_backend: Literal[
+        "local",
+        "s3",
+    ] = "local"
+
+    storage_local_root: str = "backend/storage"
+
+    storage_s3_bucket: str = ""
+    storage_s3_prefix: str = "datasets"
+    storage_s3_region: str = ""
+    storage_s3_endpoint_url: str = ""
+
     log_level: str = "INFO"
 
     auth_jwt_secret: str = ""
@@ -179,11 +191,80 @@ class Settings(BaseSettings):
 
         return value
 
+    @field_validator("storage_s3_prefix")
+    @classmethod
+    def validate_storage_s3_prefix(cls, value):
+        value = value.strip().strip("/")
+
+        if "\\" in value:
+            raise ValueError(
+                "STORAGE_S3_PREFIX must use forward slashes."
+            )
+
+        if any(
+            part in {".", ".."}
+            for part in value.split("/")
+            if part
+        ):
+            raise ValueError(
+                "STORAGE_S3_PREFIX contains an unsafe path component."
+            )
+
+        return value
+
+    @field_validator("storage_s3_endpoint_url")
+    @classmethod
+    def validate_storage_s3_endpoint_url(cls, value):
+        value = value.strip()
+
+        if not value:
+            return value
+
+        try:
+            parsed = urlsplit(value)
+        except ValueError as exc:
+            raise ValueError(
+                "STORAGE_S3_ENDPOINT_URL is invalid."
+            ) from exc
+
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(
+                "STORAGE_S3_ENDPOINT_URL must be an http or https "
+                "URL without credentials, query parameters, or fragments."
+            )
+
+        return value.rstrip("/")
+
     @model_validator(mode="after")
     def validate_llm_configuration(self):
         # LLM completely disabled for automatic
         # explanations. Credentials are not required.
+        if self.storage_backend == "s3":
+            if not self.storage_s3_bucket.strip():
+                raise ValueError(
+                    "STORAGE_S3_BUCKET is required when "
+                    "STORAGE_BACKEND=s3."
+                )
+
         if self.app_environment == "production":
+            if (
+                self.storage_s3_endpoint_url
+                and not self.storage_s3_endpoint_url.startswith(
+                    "https://"
+                )
+            ):
+                raise ValueError(
+                    "STORAGE_S3_ENDPOINT_URL must use HTTPS "
+                    "in production."
+                )
+
             if len(self.auth_jwt_secret.strip()) < 32:
                 raise ValueError(
                     "AUTH_JWT_SECRET must contain at least 32 "
@@ -267,6 +348,17 @@ class Settings(BaseSettings):
                 )
 
         return self
+
+    @property
+    def storage_local_root_path(self) -> Path:
+        path = Path(
+            self.storage_local_root
+        ).expanduser()
+
+        if not path.is_absolute():
+            path = BASE_DIR / path
+
+        return path.resolve()
 
     @property
     def cors_origins(self):
