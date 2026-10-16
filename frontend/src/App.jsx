@@ -3511,31 +3511,6 @@ export default function App({
         </div>
       </nav>
 
-      <DatasetLibrary
-        library={datasetLibrary}
-        loading={libraryLoading}
-        error={libraryError}
-        onOpenDataset={
-          handleOpenDataset
-        }
-        onOpenVersion={
-          openDatasetVersion
-        }
-        onLoadVersions={
-          listDatasetVersions
-        }
-        activeDatasetId={
-          upload?.dataset_id ?? null
-        }
-        activeVersionId={
-          upload?.dataset_version_id
-          ?? null
-        }
-        onRefresh={
-          refreshDatasetLibrary
-        }
-      />
-
       <section
         className="hero"
         id="top"
@@ -3601,6 +3576,32 @@ export default function App({
 
         <TrustPanel />
       </section>
+
+      <DatasetLibrary
+        library={datasetLibrary}
+        loading={libraryLoading}
+        error={libraryError}
+        onOpenDataset={
+          handleOpenDataset
+        }
+        onOpenVersion={
+          openDatasetVersion
+        }
+        onLoadVersions={
+          listDatasetVersions
+        }
+        activeDatasetId={
+          upload?.dataset_id ?? null
+        }
+        activeVersionId={
+          upload?.dataset_version_id
+          ?? null
+        }
+        onRefresh={
+          refreshDatasetLibrary
+        }
+      />
+
 
       {error && (
         <div
@@ -3679,6 +3680,23 @@ export default function App({
           </>
         )}
 
+
+
+      {!upload &&
+        !error && (
+          <section className="empty-state initial">
+            <h2>
+              Start with a dataset
+            </h2>
+
+            <p>
+              Your data is validated and scanned for protected columns before analysis begins.
+            </p>
+          </section>
+        )}
+    
+
+
       {analysis && (
         <ResultsDashboard
           analysis={analysis}
@@ -3694,18 +3712,6 @@ export default function App({
         />
       )}
 
-      {!upload &&
-        !error && (
-          <section className="empty-state initial">
-            <h2>
-              Start with a dataset
-            </h2>
-
-            <p>
-              Your data is validated and scanned for protected columns before analysis begins.
-            </p>
-          </section>
-        )}
     </main>
   );
 }
